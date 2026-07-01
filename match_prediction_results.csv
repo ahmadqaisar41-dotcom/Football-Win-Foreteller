@@ -1,0 +1,2 @@
+Predicted_Goals_Scored,Predicted_Goals_Against,Goal_Difference,Win_Probability,Draw_Probability,Lose_Probability,Predicted_Result,total_shot,shot_on_target,penalty_attempts,penalty_goals_scored,ht_goal_scored,ht_goal_against,possession,team,opponent,captain,venue,formation
+2.388919952579666,2.019110291279959,0.36980966129970705,0.49138810220566115,0.33940769713201036,0.16920420066232836,WIN,10.0,5.0,1.0,1.0,1.0,1.0,56.0,Manchester United,Manchester City,Ben Foster,0,5
