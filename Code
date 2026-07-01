@@ -1,0 +1,1183 @@
+# Football-Win-Foreteller
+# Machine Learning Project for Football matches Predictions 
+import numpy as np 
+
+import pandas as pd 
+
+import matplotlib.pyplot as plt 
+
+import seaborn as sns 
+
+from sklearn.model_selection import train_test_split 
+
+from sklearn.linear_model import LinearRegression, LogisticRegression 
+
+from sklearn.preprocessing import StandardScaler, LabelEncoder 
+
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score, accuracy_score, classification_report 
+
+from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier 
+
+import warnings 
+
+warnings.filterwarnings('ignore') #Ignores known problem 
+print("="*70) 
+
+print("FOOTBALL MATCH PREDICTION SYSTEM") 
+
+print("="*70) 
+
+print("\nStep 1: Loading and cleaning data...") 
+
+ 
+
+# Load the data 
+
+try: 
+
+    df = pd.read_excel('matches.xlsx', sheet_name='matches') 
+
+    print(f"✓ Data loaded successfully! Shape: {df.shape}") 
+
+except FileNotFoundError: 
+
+    try: 
+
+        df = pd.read_excel(r'D:\study\ICT\project\matches.xlsx', sheet_name='matches') 
+
+        print(f"✓ Data loaded successfully! Shape: {df.shape}") 
+
+    except: 
+
+        print("✗ Error: Could not find matches.xlsx file") 
+
+        exit() 
+
+ 
+
+# Display available columns 
+
+print(f"\nAvailable columns ({len(df.columns)}):") #len used to calculate total column and variable etc. 
+
+for i, col in enumerate(df.columns, 1): #act as loop through column and assign them number. 
+
+    print(f"  {i:2}. {col}") #placed 2 to give 2 character space 
+
+ 
+
+# Clean column names 
+
+df.columns = df.columns.str.strip().str.lower().str.replace(' ', '_').str.replace('-', '_') # df.columns.str.strip() Removes trailing, str.lower() avoids case sensitive issue, str.replace(' ', '_') makes - and space to _  
+
+ 
+
+# Standardize column names (handle different possible column names) 
+
+column_mapping = { 
+
+    'total_shot': ['shot', 'total_shot', 'shots', 'total_shots'], 
+
+    'shot_on_target': ['shot_on_target', 'shots_on_target', 'sot', 'on_target'], 
+
+    'penalty_attempts': ['penalty_attempts', 'pen_attempts', 'penalty_taken'], 
+
+    'penalty_goals_scored': ['penalty_goals_scored', 'penalty_goals', 'pen_goals'], 
+
+    'ht_goal_scored': ['ht_goal_scored', 'first_half_goals', 'half_time_goals'], 
+
+    'ht_goal_against': ['ht_goal_against', 'first_half_goals_against', 'half_time_goals_against'], 
+
+    'possession': ['poss', 'possession', 'ball_possession'], 
+
+    'team': ['team', 'team_name', 'home_team'], 
+
+    'opponent': ['opponent', 'opponent_team', 'away_team'], 
+
+    'captain': ['captain', 'captain_name', 'team_captain'], 
+
+    'venue' : ['venue', 'venue_name', 'stadium'], 
+
+    'formation' : ['formation']        
+
+}                                            # to make Consistency 
+
+ 
+
+# Find actual column names in the dataset 
+
+actual_columns = {}   #gives empty directory  
+
+for standard_name, possible_names in column_mapping.items(): #Loop through the column mapping 
+
+    for name in possible_names: 
+
+        if name in df.columns: 
+
+            actual_columns[standard_name] = name 
+
+            break 
+
+ 
+
+print("\n Standardized column mapping:") 
+
+for std_name, actual_name in actual_columns.items(): 
+
+    print(f"  {std_name:20} - {actual_name}") 
+
+ 
+
+# Check for missing required columns 
+
+required = ['total_shot', 'shot_on_target', 'penalty_attempts', 'penalty_goals_scored',             'ht_goal_scored', 'ht_goal_against', 'possession', 'team', 'opponent', 'captain','venue','formation'] 
+
+missing = [col for col in required if col not in actual_columns]        #for each column name in the required list , if this column is NOT in the actual_columns dictionary 
+
+if missing: 
+
+    print(f"\nWarning: Missing columns: {missing}") 
+
+    print("Using available columns only") #checks for missing data 
+
+ 
+
+# Prepare features using actual column names 
+
+features_data = {} 
+
+for std_name, actual_name in actual_columns.items(): 
+
+    if std_name in required: 
+
+        features_data[std_name] = df[actual_name]  #Prepares for ML/Analysis 
+
+ 
+
+# Create features DataFrame 
+
+if features_data: 
+
+    X = pd.DataFrame(features_data) 
+
+else: 
+
+    print("Error: No features found!") 
+
+    exit() 
+
+ 
+
+# Handle missing values in features 
+
+X = X.fillna(X.mean(numeric_only=True)) 
+
+ 
+
+# Handle categorical columns 
+
+categorical_cols = ['team', 'opponent', 'captain','venue','formation'] 
+
+for col in categorical_cols: 
+
+    if col in X.columns: 
+
+        le = LabelEncoder() 
+
+        X[col] = le.fit_transform(X[col].astype(str)) #Handles cases where categorical data might be stored as other types 
+
+ 
+
+# Prepare target variables 
+
+# Goals scored 
+
+if 'goal_scored' in df.columns: 
+
+    y_goals_scored = df['goal_scored'] 
+
+    print("Target 1 To detect goal scored") 
+
+ 
+
+# Goals against 
+
+if 'goal_against' in df.columns: 
+
+    y_goals_against = df['goal_against'] 
+
+    print("Target 2 to detect goal against") # Match result (Win/Lose/Draw) 
+
+if 'result' in df.columns: 
+
+    y_result = df['result'].map({'W': 2, 'D': 1, 'L': 0})  # 2=Win, 1=Draw, 0=Lose 
+
+    print(f"Target 3: Result (W/D/L) distribution:") 
+
+    print(f"    Wins: {(df['result'] == 'W').sum()}") 
+
+    print(f"    Draws: {(df['result'] == 'D').sum()}") 
+
+    print(f"    Losses: {(df['result'] == 'L').sum()}") 
+
+elif all(col in df.columns for col in ['goal_scored', 'goal_against']): 
+
+ # Create result from goals 
+
+    y_result = np.where(df['goal_scored'] > df['goal_against'], 2, 
+
+                       np.where(df['goal_scored'] == df['goal_against'], 1, 0)) 
+
+    print(f"✓ Target 3: Result created from goals") 
+
+else:  
+
+    print("✗ Warning: Could not create result target") 
+
+    y_result = None 
+
+ print("\n" + "="*70) 
+
+print("Step 2: Splitting Data") 
+
+print("="*70) 
+
+ 
+
+if y_goals_scored is not None and y_goals_against is not None and y_result is not None: 
+
+    X_train, X_test, y_gs_train, y_gs_test = train_test_split(X, y_goals_scored, test_size=0.2, random_state=42) #randome state Seed for random number generator (ensures reproducible splits) 
+
+ 
+
+    X_ga_train, X_ga_test, y_ga_train, y_ga_test = train_test_split(X, y_goals_against, test_size=0.2, random_state=42) 
+
+     
+
+    X_res_train, X_res_test, y_res_train, y_res_test = train_test_split(    X, y_result, test_size=0.2, random_state=42) 
+
+     
+
+    print(f"Training samples: {X_train.shape[0]}") 
+
+    print(f"Testing samples:  {X_test.shape[0]}") 
+
+    print(f"Features used:    {X_train.shape[1]}") 
+
+else: 
+
+    print("Error: Missing target variables!") 
+
+    exit() 
+
+ 
+
+# Scale features scaler = StandardScaler() 
+
+X_train_scaled = scaler.fit_transform(X_train) 
+
+X_test_scaled = scaler.transform(X_test) print("\n" + "="*70) 
+
+print("Step 3: Training Models") 
+
+print("="*70) 
+
+ 
+
+# Model 1: Predict Goals Scored 
+
+print("\n Model 1: Goals Scored Prediction") 
+
+model_gs = LinearRegression() 
+
+model_gs.fit(X_train_scaled, y_gs_train) 
+
+y_gs_pred = model_gs.predict(X_test_scaled) 
+
+ 
+
+mse_gs = mean_squared_error(y_gs_test, y_gs_pred) 
+
+r2_gs = r2_score(y_gs_test, y_gs_pred) 
+
+ 
+
+print(f"  R² Score:  {r2_gs:.3f}") 
+
+print(f"  RMSE:      {np.sqrt(mse_gs):.3f}") 
+
+ 
+
+# Model 2: Predict Goals Against 
+
+print("\n Model 2: Goals Against Prediction") 
+
+model_ga = LinearRegression() 
+
+model_ga.fit(X_train_scaled, y_ga_train) 
+
+y_ga_pred = model_ga.predict(X_test_scaled) 
+
+ 
+
+mse_ga = mean_squared_error(y_ga_test, y_ga_pred) 
+
+r2_ga = r2_score(y_ga_test, y_ga_pred) 
+
+ 
+
+print(f"  R² Score:  {r2_ga:.3f}") 
+
+print(f"  RMSE:      {np.sqrt(mse_ga):.3f}") 
+
+ 
+
+# Model 3: Predict Match Result 
+
+print("\n📊 Model 3: Match Result Prediction") 
+
+model_res = LogisticRegression(multi_class='multinomial', max_iter=1000) 
+
+model_res.fit(X_train_scaled, y_res_train) 
+
+y_res_pred = model_res.predict(X_test_scaled) 
+
+y_res_proba = model_res.predict_proba(X_test_scaled) 
+
+ 
+
+accuracy = accuracy_score(y_res_test, y_res_pred) 
+
+print(f"  Accuracy:  {accuracy:.3f}") 
+print(f"  Classes:   [Lose, Draw, Win]") 
+print("\n" + "="*70) 
+
+print("Step 4: Creating Visualizations") 
+
+print("="*70) 
+
+ 
+
+fig = plt.figure(figsize=(18, 12)) 
+
+ 
+
+# 1. Actual vs Predicted Goals 
+
+ax1 = plt.subplot(2, 2, 1 ) 
+
+ax1.scatter(y_gs_test, y_gs_pred, alpha=0.6, edgecolor='w', linewidth=0.5) 
+
+ax1.plot([y_gs_test.min(), y_gs_test.max()],  
+
+         [y_gs_test.min(), y_gs_test.max()], 'r--', lw=2) 
+
+ax1.set_xlabel('Actual Goals Scored', fontsize=12) 
+
+ax1.set_ylabel('Predicted Goals Scored', fontsize=12) 
+
+ax1.set_title('Goals Scored: Actual vs Predicted', fontsize=14, fontweight='bold') 
+
+ax1.grid(True, alpha=0.3) 
+
+ 
+
+# 2. Goals Against Prediction 
+
+ax2 = plt.subplot(2, 2, 2) 
+
+ax2.scatter(y_ga_test, y_ga_pred, alpha=0.6, edgecolor='w', linewidth=0.5, color='orange') 
+
+ax2.plot([y_ga_test.min(), y_ga_test.max()],  
+
+         [y_ga_test.min(), y_ga_test.max()], 'r--', lw=2) 
+
+ax2.set_xlabel('Actual Goals Against', fontsize=12) 
+
+ax2.set_ylabel('Predicted Goals Against', fontsize=12) 
+
+ax2.set_title('Goals Against: Actual vs Predicted', fontsize=14, fontweight='bold') 
+
+ax2.grid(True, alpha=0.3) 
+
+ 
+
+# 3. Feature Importance for Goals Scored 
+
+ax4 = plt.subplot(2, 2, 3) 
+
+coef_gs = pd.DataFrame({ 
+
+    'Feature': X.columns, 
+
+    'Importance': np.abs(model_gs.coef_)}).sort_values('Importance', ascending=False) 
+
+bars_gs = ax4.barh(coef_gs['Feature'][:11], coef_gs['Importance'][:11], color='skyblue') 
+
+ax4.set_xlabel('Absolute Coefficient', fontsize=12) 
+
+ax4.set_title('Top Features for Goals Scored', fontsize=14, fontweight='bold') 
+
+ax4.invert_yaxis() 
+ 
+
+# 4. Feature Importance for Goals Against 
+
+ax5 = plt.subplot(2, 2, 4) 
+
+coef_ga = pd.DataFrame({ 
+
+    'Feature': X.columns, 
+
+    'Importance': np.abs(model_ga.coef_)}).sort_values('Importance', ascending=False) 
+
+bars_ga = ax5.barh(coef_ga['Feature'][:11], coef_ga['Importance'][:11], color='salmon') 
+
+ax5.set_xlabel('Absolute Coefficient', fontsize=12) 
+
+ax5.set_title('Top Features for Goals Against', fontsize=14, fontweight='bold') 
+
+ax5.invert_yaxis() 
+
+ 
+
+plt.tight_layout() 
+
+plt.savefig('match_prediction_analysis.png', dpi=150, bbox_inches='tight') 
+
+print("Visualizations saved as 'match_prediction_analysis.png'") 
+
+plt.show() 
+print("\n" + "="*70) 
+
+print("Step 5: Interactive Prediction") 
+
+print("="*70) 
+
+ 
+
+print("\n⚽ FOOTBALL MATCH PREDICTOR") 
+
+print("-"*40) 
+
+print("Enter match statistics to predict the outcome:") 
+
+print("(Press Enter to use average value)") 
+
+ 
+
+# Get statistics for each feature 
+
+feature_stats = {} 
+
+for feature in X.columns: 
+
+    feature_stats[feature] = { 
+
+        'min': X[feature].min(), 
+
+        'max': X[feature].max(), 
+
+        'mean': X[feature].mean(), 
+
+        'std': X[feature].std() 
+
+    } 
+
+ 
+
+# User input for each feature 
+
+user_inputs = {} 
+
+print("\nEnter Match Statistics:") 
+
+print("-"*40) 
+
+ # Numerical features input 
+
+numerical_features = ['total_shot', 'shot_on_target', 'penalty_attempts',  
+
+                      'penalty_goals_scored', 'ht_goal_scored', 'ht_goal_against', 'possession'] 
+
+ 
+
+for feature in numerical_features: 
+
+    if feature in X.columns: 
+
+        stats = feature_stats[feature] 
+
+         
+
+        while True: 
+
+            try: 
+
+                user_input = input(f"\n{feature.replace('_', ' ').title()} ({stats['min']:.1f}-{stats['max']:.1f}, avg: {stats['mean']:.1f}): ").strip() 
+
+                 
+
+                if user_input == "": 
+
+                    value = stats['mean'] 
+
+                    print(f"  Using average value: {value:.1f}") 
+
+                    break 
+
+                else: 
+
+                    value = float(user_input) 
+
+                    if value < 0: 
+
+                        print("Value cannot be negative!") 
+
+                        continue 
+
+                    break 
+
+            except ValueError: 
+
+                print("Invalid input. Please enter a number.") 
+
+         
+
+        user_inputs[feature] = value 
+
+ 
+
+# Categorical features input with encoding 
+
+categorical_features = ['team', 'opponent', 'captain','venue','formation'] 
+
+team_encoder = LabelEncoder() 
+
+team_encoder.fit(df['team'].astype(str)) 
+
+ 
+
+opponent_encoder = LabelEncoder() 
+
+opponent_encoder.fit(df['opponent'].astype(str)) 
+
+ 
+
+captain_encoder = LabelEncoder() 
+
+captain_encoder.fit(df['captain'].astype(str)) 
+
+ 
+
+venue_encoder = LabelEncoder() 
+
+venue_encoder.fit(df['venue'].astype(str)) 
+
+ 
+
+formation_encoder = LabelEncoder() 
+
+formation_encoder.fit(df['formation'].astype(str)) 
+
+ 
+
+print("\Enter Team Information:") 
+
+print("-"*40) 
+
+ 
+
+# Team selection 
+
+print("\nAvailable Teams:") 
+
+unique_teams = team_encoder.classes_ 
+
+for i, team in enumerate(unique_teams[:15], 1): 
+
+    print(f"  {i:2}. {team}") 
+
+print("  ... and more") 
+
+ 
+
+while True: 
+
+    team_input = input("\nEnter Team Name: ").strip().lower() 
+
+    if team_input in [team.lower() for team in unique_teams]: 
+
+        # Find the original case version 
+
+        original_team = next(team for team in unique_teams if team.lower() == team_input) 
+
+        user_inputs['team'] = team_encoder.transform([original_team])[0] 
+
+        break 
+
+    else: 
+
+        print(f"Team '{team_input}' not found in database.") 
+
+        print("Please enter a valid team name from the list above.") 
+
+ 
+
+# Opponent selection 
+
+print("\nAvailable Opponents:") 
+
+opponent_unique=opponent_encoder.classes_ 
+
+for i, opponent in enumerate(opponent_unique[:15], 1): 
+
+    print(f"  {i:2}. {opponent}") 
+
+print("  ... and more") 
+
+ 
+
+while True: 
+
+    opponent_input = input("\nEnter Opponent Name: ").strip().lower() 
+
+    if opponent_input in [opponent.lower() for opponent in opponent_unique]: 
+
+        original_opp = next(opponent for opponent in opponent_unique if opponent.lower() == opponent_input) 
+
+        user_inputs['opponent'] = opponent_encoder.transform([original_opp])[0] 
+
+        break 
+
+    else: 
+
+        print(f"Opponent '{opponent_input}' not found in database.") 
+
+        print("Please enter a valid opponent name from the list above.") 
+
+ 
+
+# Captain selection 
+
+print("\nAvailable Captains:") 
+unique_captains = captain_encoder.classes_ 
+
+for i, captain in enumerate(unique_captains[:10], 1): 
+
+    print(f"  {i:2}. {captain}") 
+
+print("  ... and more") 
+
+ 
+
+while True: 
+
+    captain_input = input("\nEnter Captain Name: ").strip().lower() 
+
+    if captain_input in [captain.lower() for captain in unique_captains]: 
+
+        original_captain = next(captain for captain in unique_captains if captain.lower() == captain_input) 
+
+        user_inputs['captain'] = captain_encoder.transform([original_captain])[0] 
+
+        break 
+
+    else: 
+
+        print(f"Captain '{captain_input}' not found in database.") 
+
+        print("Please enter a valid captain name from the list above.") 
+
+     
+
+unique_venue = venue_encoder.classes_ 
+
+for i, venue in enumerate(unique_venue[:2], 1): 
+
+    print(f"  {i:2}. {venue}") 
+
+ 
+
+while True: 
+
+    venue_input = input("\nEnter Venue: ").strip().lower() 
+
+    if venue_input in [venue.lower() for venue in unique_venue]: 
+
+        original_venue = next(venue for venue in unique_venue if venue.lower() == venue_input) 
+
+        user_inputs['venue'] = venue_encoder.transform([original_venue])[0] 
+
+        break 
+
+    else: 
+
+        print(f"Venue '{venue}' not found in database.") 
+
+        print("Please enter a valid venue name from the list above.") 
+
+     
+
+print("\nAvailable formations:") 
+
+unique_formations = formation_encoder.classes_ 
+
+for i, formation in enumerate(unique_formations[:10], 1): 
+
+    print(f"  {i:1}. {formation}") 
+
+ 
+
+while True: 
+
+    formation_input = input("\nEnter formation Name: ").strip().lower() 
+
+    if formation_input in [formation.lower() for formation in unique_formations]: 
+
+        original_formation = next(formation for formation in unique_formations if formation.lower() == formation_input) 
+
+        user_inputs['formation'] = formation_encoder.transform([original_formation])[0] 
+
+        break 
+
+    else: 
+
+        print(f"Formation '{formation}' not found in database.") 
+
+        print("Please enter a valid formation name from the list above.") 
+
+ print("\n" + "="*70) 
+
+print("Step 6: Generating Predictions") 
+
+print("="*70) 
+
+ 
+
+# Create input array in correct order 
+
+input_array = [] 
+
+for col in X.columns: 
+
+    input_array.append(user_inputs[col]) 
+
+ 
+
+input_df = pd.DataFrame([input_array], columns=X.columns) 
+
+ 
+
+# Scale the input 
+
+input_scaled = scaler.transform(input_df) 
+
+ 
+
+# Make predictions 
+
+pred_goals_scored = model_gs.predict(input_scaled)[0] 
+
+pred_goals_against = model_ga.predict(input_scaled)[0] 
+
+pred_result_proba = model_res.predict_proba(input_scaled)[0] 
+
+ 
+
+# Calculate prediction intervals (using test set residuals) 
+
+gs_residuals = y_gs_test - y_gs_pred 
+
+ga_residuals = y_ga_test - y_ga_pred 
+
+ 
+
+gs_std = np.std(gs_residuals) 
+
+ga_std = np.std(ga_residuals) 
+
+ 
+
+gs_lower = pred_goals_scored - 1.96 * gs_std     #The number 1.96 is used in statistics as the critical value (or z-score) for a 95% confidence interval 
+
+gs_upper = pred_goals_scored + 1.96 * gs_std 
+
+ 
+
+ga_lower = pred_goals_against - 1.96 * ga_std 
+
+ga_upper = pred_goals_against + 1.96 * ga_std 
+
+ 
+
+# Determine predicted result 
+
+pred_result_idx = np.argmax(pred_result_proba) 
+
+result_labels = ['LOSE', 'DRAW', 'WIN'] 
+
+predicted_result = result_labels[pred_result_idx] 
+
+ print("\n" + "="*70) 
+
+print(" MATCH PREDICTION RESULTS") 
+
+print("="*70) 
+
+ 
+
+print(f"\n GOAL PREDICTIONS:") 
+
+print(f"  Predicted Goals Scored:     {pred_goals_scored:.2f}") 
+
+print(f"  95% Confidence Interval:    [{gs_lower:.2f}, {gs_upper:.2f}]") 
+
+print(f"  Predicted Goals Against:    {pred_goals_against:.2f}") 
+
+print(f"  95% Confidence Interval:    [{ga_lower:.2f}, {ga_upper:.2f}]") 
+
+print(f"  Predicted Goal Difference:  {pred_goals_scored - pred_goals_against:+.2f}") 
+
+ 
+
+print(f"\n MATCH RESULT PROBABILITIES:") 
+
+print(f"  WIN Probability:           {pred_result_proba[2]*100:6.1f}%") 
+
+print(f"  DRAW Probability:          {pred_result_proba[1]*100:6.1f}%") 
+
+print(f"  LOSE Probability:          {pred_result_proba[0]*100:6.1f}%") 
+
+print(f"\n   Predicted Result:        {predicted_result}") 
+
+ 
+
+print(f"\n INTERPRETATION:") 
+
+if predicted_result == 'WIN': 
+
+    if pred_result_proba[2] > 0.7: 
+
+        print(f"   Strong favorite to win") 
+
+    elif pred_result_proba[2] > 0.55: 
+
+        print(f"    Slight favorite to win") 
+
+    else: 
+
+        print(f"    Marginal favorite to win") 
+
+elif predicted_result == 'DRAW': 
+
+    if pred_result_proba[1] > 0.4: 
+
+        print(f"    Likely to be a draw") 
+
+    else: 
+
+        print(f"   Close match expected") 
+
+else:  # LOSE 
+
+    if pred_result_proba[0] > 0.7: 
+
+        print(f"   Strong underdog") 
+
+    elif pred_result_proba[0] > 0.55: 
+
+        print(f"   Slight underdog") 
+
+    else: 
+
+        print(f"   Marginal underdog") 
+
+ 
+
+print(f"\n EXPECTED MATCH SCENARIO:") 
+
+if pred_goals_scored - pred_goals_against >= 2: 
+
+    print(f"   Comfortable victory expected") 
+
+elif pred_goals_scored - pred_goals_against >= 1: 
+
+    print(f"   Close victory expected") 
+
+elif abs(pred_goals_scored - pred_goals_against) < 0.5: 
+
+    print(f"   Very close match expected") 
+
+elif pred_goals_against - pred_goals_scored >= 2: 
+
+    print(f"   Difficult match expected") 
+
+ 
+
+# Display user inputs 
+
+print(f"\nYOUR INPUT SUMMARY:") 
+
+print("-"*40) 
+
+for feature, value in user_inputs.items(): 
+
+    if feature in categorical_features: 
+
+        if feature == 'team': 
+
+            value = team_encoder.inverse_transform([value])[0] 
+
+        elif feature == 'opponent': 
+
+            value = team_encoder.inverse_transform([value])[0] 
+
+        elif feature == 'captain': 
+
+            value = captain_encoder.inverse_transform([value])[0] 
+
+        print(f"  {feature.replace('_', ' ').title():20}: {value}") 
+
+    else: 
+
+        stats = feature_stats[feature] 
+
+        diff_percent = ((value - stats['mean']) / stats['mean'] * 100) if stats['mean'] != 0 else 0 
+
+        diff_symbol = "+" if diff_percent > 0 else "" 
+
+        print(f"  {feature.replace('_', ' ').title():20}: {value:.1f} ({diff_symbol}{diff_percent:.1f}% vs avg)") 
+
+ print("\n" + "="*70) 
+
+print("Step 7: Saving Results") 
+
+print("="*70) 
+
+ 
+
+# Create results DataFrame 
+
+results = { 
+
+    'Predicted_Goals_Scored': pred_goals_scored, 
+
+    'Predicted_Goals_Against': pred_goals_against, 
+
+    'Goal_Difference': pred_goals_scored - pred_goals_against, 
+
+    'Win_Probability': pred_result_proba[2], 
+
+    'Draw_Probability': pred_result_proba[1], 
+
+    'Lose_Probability': pred_result_proba[0], 
+
+    'Predicted_Result': predicted_result, 
+
+    **user_inputs 
+
+} 
+
+ 
+
+# Decode categorical values for saving 
+
+if 'team' in results: 
+
+    results['team'] = team_encoder.inverse_transform([results['team']])[0] 
+
+if 'opponent' in results: 
+
+    results['opponent'] = team_encoder.inverse_transform([results['opponent']])[0] 
+
+if 'captain' in results: 
+
+    results['captain'] = captain_encoder.inverse_transform([results['captain']])[0] 
+
+ 
+
+results_df = pd.DataFrame([results]) 
+
+results_df.to_csv('match_prediction_results.csv', index=False) 
+
+print("✓ Prediction results saved to 'match_prediction_results.csv'") 
+
+ 
+
+# Save model performance 
+
+performance = { 
+
+    'Model': ['Goals_Scored', 'Goals_Against', 'Result_Prediction'], 
+
+    'R2/Accuracy': [r2_gs, r2_ga, accuracy],  
+
+} 
+
+performance_df = pd.DataFrame(performance) 
+
+performance_df.to_csv('model_performance.csv', index=False) 
+
+print("Model performance saved to 'model_performance.csv'") 
+
+ 
+
+print("\n" + "="*70) 
+
+print("ANALYSIS COMPLETE!") 
+
+print("="*70) 
+
+print("\nSummary:") 
+
+print(" Match statistics analyzed") 
+
+print(f" Predicted: {pred_goals_scored:.1f} - {pred_goals_against:.1f}") 
+
+print(f" Most likely result: {predicted_result} ({np.max(pred_result_proba)*100:.1f}% probability)") 
+
+print(f" All results saved to CSV files") 
+
+print(f" Visualization saved: 'match_prediction_analysis.png'") 
+
+print("\nThank you for using the Football Match Prediction System") 
+
+ from supabase import create_client, Client 
+
+import os 
+
+ 
+
+# Uploading files/scripts on supabase server 
+
+# 1. Configuration 
+
+SUPABASE_URL: str = "" 
+
+SUPABASE_KEY: str = "" 
+
+ 
+
+# Define Football matches and local folder paths 
+
+BUCKET_NAME = "Football matches" 
+
+LOCAL_FOLDER_PATH = r""  
+
+ 
+
+try: 
+
+    if not SUPABASE_URL or not SUPABASE_KEY: 
+
+        raise ValueError("Supabase URL or Key not set.") 
+
+     
+
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY) 
+
+    print("Supabase client initialized successfully.") 
+
+except Exception as e: 
+
+    print(f"Error initializing Supabase client. Please check your URL/Key and library installation: {e}") 
+
+    exit() 
+
+ 
+
+def upload_folder_to_supabase(local_folder_path: str, bucket_name: str, supabase_client: Client): 
+
+    """ 
+
+    Recursively uploads all files in a local folder to a Supabase Storage bucket,  
+
+    preserving the folder structure, using generic exception handling. 
+
+    """ 
+
+    if not os.path.isdir(local_folder_path): 
+
+        print(f"Error: Local folder path does not exist: {local_folder_path}") 
+
+        return 
+
+ 
+
+    print(f"Starting upload from '{local_folder_path}' to bucket '{bucket_name}'...") 
+
+ 
+
+    for root, _, files in os.walk(local_folder_path): 
+
+        relative_path_prefix = os.path.relpath(root, local_folder_path) 
+
+         
+
+        for file_name in files: 
+
+            local_file_path = os.path.join(root, file_name) 
+
+             
+
+            # Construct storage path, ensuring consistency with '/' separators 
+
+            storage_path = os.path.normpath(os.path.join(relative_path_prefix, file_name)).replace(os.path.sep, '/') 
+
+ 
+
+            # Clean up potential leading ./ for files in the root folder 
+
+            if storage_path.startswith('./'): 
+
+                 storage_path = storage_path[2:] 
+
+ 
+
+            print(f"Attempting to upload: {local_file_path} -> {bucket_name}/{storage_path}") 
+
+ 
+
+            try: 
+
+                with open(local_file_path, 'rb') as f: 
+
+                    # Upload method - will raise an exception on failure 
+
+                    supabase_client.storage \ 
+
+                        .from_(bucket_name) \ 
+
+                        .upload( 
+
+                            file=f, 
+
+                            path=storage_path, 
+
+                            file_options={"cache-control": "3600", "upsert": "true"} 
+
+                        ) 
+
+                 
+
+                # Success block: If no exception is raised, the upload was successful. 
+
+                # We skip checking the response object to avoid the AttributeError. 
+
+                print(f"✅ Success: Uploaded {file_name} to {storage_path}") 
+
+                     
+
+            except Exception as e: 
+
+                # Catch all errors (network, file system, or Supabase API errors) 
+
+                print(f"❌ Upload Error for {file_name}: {e}") 
+
+ 
+
+# 2. Execute the Upload 
+
+if __name__ == "__main__": 
+
+    upload_folder_to_supabase(LOCAL_FOLDER_PATH, BUCKET_NAME, supabase) 
